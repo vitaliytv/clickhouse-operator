@@ -134,6 +134,7 @@ def _image_builders():
 
 _GH_TOKEN_MINTER = Components.GitHubTokenMinter(
     permissions={
+        "actions": "write",
         "checks": "write",
         "contents": "write",
         "issues": "write",

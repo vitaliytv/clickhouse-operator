@@ -2,8 +2,20 @@ name: CodeQL
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  # pull_request is handled by the praktika PR workflow, which dispatches this
+  # workflow via workflow_dispatch (ci/jobs/dispatch_gh_actions.py) until it is
+  # migrated. workflow_dispatch runs on `main` (trusted definition) and checks out
+  # the PR merge ref passed as `pr_ref`; the CodeQL results are attributed to that
+  # ref/sha so PR code-scanning annotations still work. Do not re-enable
+  # pull_request without removing that bridge.
+  # pull_request:
+  #   branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      pr_ref:
+        description: 'PR merge ref to analyze (e.g. refs/pull/123/merge); empty uses github.ref'
+        required: false
+        default: ''
   schedule:
     - cron: '30 4 * * 1'
 permissions:
@@ -27,6 +39,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.inputs.pr_ref || github.ref }}
+
+      - name: Resolve analyzed sha
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Go
         if: matrix.language == 'go'
@@ -45,3 +63,7 @@ jobs:
         uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
         with:
           category: "/language:${{ matrix.language }}"
+          # Attribute results to the checked-out ref/sha (the PR merge commit when
+          # dispatched by the praktika bridge) rather than the dispatch ref (main).
+          ref: ${{ github.event.inputs.pr_ref || github.ref }}
+          sha: ${{ steps.sha.outputs.sha }}

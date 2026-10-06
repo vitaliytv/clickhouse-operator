@@ -2,16 +2,28 @@ name: Operator CI
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  # pull_request is handled by the praktika PR workflow, which dispatches this
+  # workflow via workflow_dispatch (ci/jobs/dispatch_gh_actions.py) until all its
+  # jobs are migrated. workflow_dispatch runs on `main` (trusted definition) and
+  # checks out the PR's merge ref passed as `pr_ref`. Do not re-enable
+  # pull_request without removing that bridge.
+  # pull_request:
+  #   branches: [ main ]
   workflow_dispatch:
+    inputs:
+      pr_ref:
+        description: 'PR merge ref to check out (e.g. refs/pull/123/merge); empty uses github.ref'
+        required: false
+        default: ''
 env:
   kind-version: 'v0.32.0'
 permissions:
   contents: read
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # Group per dispatched PR (pr_ref) so different PRs don't serialize/cancel each
+  # other; fall back to PR number / ref for the other triggers.
+  group: ${{ github.workflow }}-${{ github.event.inputs.pr_ref || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
 
 jobs:
   changes:
@@ -21,13 +33,22 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      # On workflow_dispatch (the praktika PR bridge) paths-filter has no PR base
+      # to diff against, so run the full pipeline.
+      code: ${{ steps.filter.outputs.code || steps.dispatch.outputs.code }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.inputs.pr_ref || github.ref }}
+      - name: Force full run on dispatch
+        id: dispatch
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "code=true" >> "$GITHUB_OUTPUT"
       - name: Detect non-docs changes
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
+        if: github.event_name != 'workflow_dispatch'
         with:
           predicate-quantifier: 'every'
           filters: |
@@ -49,6 +70,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.inputs.pr_ref || github.ref }}
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -110,6 +133,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-tags: 'true'
+          ref: ${{ github.event.inputs.pr_ref || github.ref }}
 
       - name: Free disk space
         uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
@@ -185,6 +209,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.inputs.pr_ref || github.ref }}
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -225,6 +251,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.inputs.pr_ref || github.ref }}
 
       - name: Download e2e shard plan
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -292,6 +320,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.inputs.pr_ref || github.ref }}
 
       - name: Download all e2e test reports
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -339,6 +369,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          ref: ${{ github.event.inputs.pr_ref || github.ref }}
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7

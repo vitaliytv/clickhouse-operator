@@ -123,36 +123,67 @@ def _install(arch, versions):
     _sh(f"python3 -m pip install --break-system-packages codespell=={versions['codespell']}")
 
 
-def main():
+NAMESPACE = "go-env"
+
+
+def _key_and_cache():
     arch = _arch()
     versions = _versions()
     key = S3PathCache.key_from([arch] + [f"{k}={v}" for k, v in sorted(versions.items())])
     print(f"go-env cache key: {key} (arch={arch}, versions={versions})")
-
     cache = None
     try:
         bucket, _, prefix = CACHE_S3_PATH.partition("/")
         cache = S3PathCache(bucket=bucket, prefix=prefix, region=AWS_REGION)
     except Exception as e:
-        print(f"WARNING: S3 cache unavailable ({e}); installing without cache")
+        print(f"WARNING: S3 cache unavailable ({e})")
+    return arch, versions, key, cache
 
+
+def ensure():
+    """Workflow pre-hook: populate the S3 bundle once (in the Config job) if it is
+    missing, so the per-job pre-hooks only download instead of each rebuilding on a
+    cache miss. Best-effort — on any failure the jobs still self-provision."""
+    arch, versions, key, cache = _key_and_cache()
+    if not cache:
+        print("No S3 cache; jobs will self-provision")
+        return 0
+    try:
+        if cache.exists(key, namespace=NAMESPACE):
+            print("go-env cache already present; nothing to prepare")
+            return 0
+        print("go-env cache miss; building bundle once for the run")
+        _install(arch, versions)
+        cache.save(key, BUNDLE_PATHS, namespace=NAMESPACE)
+    except Exception as e:
+        print(f"WARNING: could not prepare go-env cache ({e}); jobs will self-provision")
+    return 0
+
+
+def setup():
+    """Per-job pre-hook: restore the bundle; on a miss (e.g. the ensure step did
+    not run or a different arch) build it and save it so the run self-heals."""
+    arch, versions, key, cache = _key_and_cache()
     restored = False
     if cache:
         try:
-            restored = cache.restore(key, namespace="go-env")
+            restored = cache.restore(key, namespace=NAMESPACE)
         except Exception as e:
             print(f"WARNING: cache restore failed ({e}); installing fresh")
-
     if not restored:
         _install(arch, versions)
         if cache:
             try:
-                cache.save(key, BUNDLE_PATHS, namespace="go-env")
+                cache.save(key, BUNDLE_PATHS, namespace=NAMESPACE)
             except Exception as e:
                 print(f"WARNING: cache save failed ({e}); continuing")
-
     _sh("go version && helm version && kubebuilder version && controller-gen --version")
     return 0
+
+
+def main():
+    mode = sys.argv[1] if len(sys.argv) > 1 else "setup"
+    return ensure() if mode == "ensure" else setup()
 
 
 if __name__ == "__main__":
