@@ -1,0 +1,23 @@
+internal/controller/versionprobe_test.go
+  s_2222e8f33928c9::t_a748d68d15f0cd 563-572,574-585,587-590
+  s_2222e8f33928c9::t_ca3cacf469c577 573,586
+internal/controller/versionprobe.go
+  s_2222e8f33928c9::t_ca3cacf469c577 222
+  s_2222e8f33928c9::t_3b23de81f0ea72 50-51,206-220,438
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7b262a9a8ecacacdae579ad9da5f370463d2658a",
+  "prompts": {},
+  "sessions": {
+    "s_2222e8f33928c9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a10f33-be79-7fa0-932c-0a5c7b84e60a",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "vitaliytv <v@nitra.ai>"
+    }
+  }
+}
